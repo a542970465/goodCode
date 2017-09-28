@@ -1,0 +1,209 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: xp
+ * Date: 2017/9/24
+ * Time: 上午9:40
+ */
+
+namespace App\Http\Controllers\V1\Near;
+
+
+use App\Entity\Activity;
+use App\Entity\ActivityPrizeItem;
+use App\Entity\Coupon;
+use App\Entity\Promotion;
+use App\Entity\Store;
+use App\Entity\User;
+use App\Helper\Date;
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class NearController extends Controller
+{
+    // 附近的商家活动
+    public function nearStore(Request $request)
+    {
+        if($json = $this->Validator(Controller::LOGIN_NOT,
+            [
+                'u_la' => 'required',
+                'u_lon'=> 'required',
+            ])) return $json;
+
+        $u_la = $request->input('u_la'); // 纬度
+        $u_lon = $request->input('u_lon'); //经度
+
+        $model = Store::query();
+
+        $data  = $this->offsetPage($model,'id,asc');
+
+        if(!$data['count'])
+        {
+            return $this->json(1,'成功', $data);
+        }
+
+        $this->listIdAsIid($data['data'],function(&$item) use ($u_la,$u_lon)
+        {
+            $promotion = Promotion::where('store_id', $item['iid'])->get()->toArray();
+
+            $promotionInfo = array();
+
+            if (!$promotion)
+            {
+                $promotionInfo = -1;
+
+            } else {
+
+                for ($i = 0; $i < count($promotion); $i++)
+                {
+
+                    $promotionInfo[] =
+                        [
+                            'promotion_name'        =>      $promotion[$i]['name'],
+                            'promotion_type'        =>      $promotion[$i]['type'],
+                            'promotion_user_type'   =>      $promotion[$i]['user_type'],
+                            'promotion_time_info'   =>      $promotion[$i]['time_info'],
+                            'promotion_time_type'   =>      $promotion[$i]['time_type'],
+                            'promotion_money'       =>      $promotion[$i]['money'],
+                            'promotion_min_money'   =>      $promotion[$i]['min_money']
+                        ];
+                }
+            }
+            $item['region'] =   $item['province_name'].$item['city_name'].$item['area_name'].$item['address'];
+            $item['promotionInfo'] = $promotionInfo;
+            $item['distance'] = round($this->distance($u_la, $u_lon, $item['latitude'], $item['longitude']));
+        });
+
+        return $this->json(1, 'ok', $data);
+
+    }
+
+
+    // 附近的商家活动
+    public function near_store(Request $request)
+    {
+
+        $u_la = $request->input('u_la'); // 纬度
+        $u_lon = $request->input('u_lon'); //经度
+
+        $model = Store::query()
+            ->orderBy(DB::raw("ACOS(SIN(('longitude' * 3.1415) / 180 ) *SIN(($u_la * 3.1415) / 180 ) +COS(('latitude' * 3.1415) / 180 ) * COS(($u_la * 3.1415) / 180 ) *COS(('longitude' * 3.1415) / 180 - ($u_lon * 3.1415) / 180 ) ) * 6380"))
+            ->limit(7)
+            ->get()
+            ->toArray();
+
+        for($i = 0; $i < count($model); $i++)
+        {
+
+            $promotion = Promotion::where('store_id', $model[$i]['id'])->get()->toArray();
+
+            $promotionInfo = array();
+
+            if (!$promotion)
+            {
+                $promotionInfo = -1;
+
+            } else {
+
+                for ($i = 0; $i < count($promotion); $i++)
+                {
+
+                    $promotionInfo[] =
+                        [
+                            'promotion_name'        =>      $promotion[$i]['name'],
+                            'promotion_type'        =>      $promotion[$i]['type'],
+                            'promotion_user_type'   =>      $promotion[$i]['user_type'],
+                            'promotion_time_info'   =>      $promotion[$i]['time_info'],
+                            'promotion_time_type'   =>      $promotion[$i]['time_type'],
+                            'promotion_money'       =>      $promotion[$i]['money'],
+                            'promotion_min_money'   =>      $promotion[$i]['min_money']
+                        ];
+                }
+            }
+
+
+            $data[] = [
+
+                'store_id'      =>      $model[$i]['id'],
+                'image'         =>      $model[$i]['image'],
+                'name'          =>      $model[$i]['name'],
+                'region'        =>      $model[$i]['area_name'] . $model[$i]['address'],
+                'distance'      =>      round($this->getDistance($u_la, $u_lon, $model[$i]['latitude'], $model[$i]['longitude'])),
+                'promotionInfo' => $promotionInfo
+
+            ];
+
+        }
+
+        return $this->json(1, 'ok', $data);
+
+    }
+
+
+    /**
+     * 计算两个经纬度之间的距离
+     */
+
+    public function getDistance($u_la, $u_lon, $s_la, $s_lon)
+    {
+        // 将角度转为狐度
+        $rad_u_la = deg2rad($u_la); //deg2rad()函数将角度转换为弧度
+        $rad_s_la = deg2rad($s_la);
+        $rad_u_lon = deg2rad($u_lon);
+        $rad_s_lon = deg2rad($s_lon);
+        $a = $rad_u_la - $rad_s_la;
+        $b = $rad_u_lon - $rad_s_lon;
+        $s = 2 * asin(sqrt(pow(sin($a / 2), 2) + cos($rad_u_la) * cos($rad_s_la) * pow(sin($b / 2), 2))) * 6378.137 * 1000;
+        return $s;
+
+    }
+
+    /**
+     * 计算经纬度
+     * @param $lat1
+     * @param $lon1
+     * @param $lat2
+     * @param $lon2
+     * @return float
+     */
+   public function distance($lat1, $lon1, $lat2, $lon2) {
+        $R = 6371393; //地球平均半径,单位米
+        $dlat = deg2rad($lat2-$lat1);
+        $dlon = deg2rad($lon2-$lon1);
+        $a = pow(sin($dlat/2), 2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * pow(sin($dlon/2), 2);
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        $d = $R * $c;
+        return round($d);
+    }
+
+    //功能：计算两个时间戳之间相差的日时分秒
+    //$begin_time  开始时间戳
+    //$end_time 结束时间戳
+    public function  timediff($begin_time,$end_time)
+    {
+        if($begin_time < $end_time){
+            $starttime = $begin_time;
+            $endtime = $end_time;
+        }else{
+            $starttime = $end_time;
+            $endtime = $begin_time;
+        }
+
+        //计算天数
+        $timediff = $endtime-$starttime;
+        $days = intval($timediff/86400);
+        //计算小时数
+        $remain = $timediff%86400;
+        $hours = intval($remain/3600);
+        //计算分钟数
+        $remain = $remain%3600;
+        $mins = intval($remain/60);
+
+        $res = array("day" => $days,"hour" => $hours,"min" => $mins);
+        return $res;
+    }
+
+
+
+}
