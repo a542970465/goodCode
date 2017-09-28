@@ -1,0 +1,52 @@
+/**
+     * 常见分页
+     */
+    public function offsetPage($model,$order = 'sponsor_member,desc')
+    {
+        $request = $this->request();
+        $page = intval($request->input('page')) ?: 1;
+        $limit = 10;
+        $count = $model->count();
+        if($count)
+        {
+            $total_page = ceil($count/$limit);
+
+            if($page>$total_page)
+            {
+                return [
+                    'data'  => [],
+                    'count' => 0,
+                    'page' => 1,
+                    'total_page'  => 0,
+                ];
+            }
+            if(!$page)
+            {
+                $page = 1;
+            }
+
+            $offest = ($page-1)*$limit;
+        }
+        else
+        {
+            return [
+                'data'  => [],
+                'count' => 0,
+                'page' => 1,
+                'total_page'  => 0,
+            ];
+        }
+        $order = explode(',',$order);
+        $model = $model->orderBy($order[0], $order[1]);
+        $model = $model->offset($offest)->limit($limit);
+        $model = $model->get();
+
+        $data =  $model->toArray();
+
+        return [
+            'data'  => $data,
+            'count' => $count,
+            'page' => intval($page),
+            'total_page'  => $total_page,
+        ];
+    }
