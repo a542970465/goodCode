@@ -1,0 +1,104 @@
+
+protected function getActivityMemberBase(Activity $model)
+    {
+        $start = (explode(' ',$model->s_at)[0]).' '.$model->stime;
+        $end   = (explode(' ',$model->e_at)[0]).' '.$model->etime;
+        //查询用户消费表
+        if($model->type == Activity::TYPE_UNION)
+        {
+            $stores = ActivityStore::where('activity_id',$model->id)->pluck('store_id');
+            $stores = $stores->toArray();
+            $stores[] = $model->store_id;
+            switch($model->join_type)
+            {
+                case Activity::JOIN_TYPE_ARRIVAL:
+                    $rankings = ActivityMember::whereIn('store_id',$stores)->where('activity_id',$model->id)->whereBetween('created_at',[$start,$end]);
+                    break;
+
+                case Activity::JOIN_TYPE_USER_TYPE:
+
+                    $rankings =   ActivityMember::whereIn('store_id',$stores)->where('activity_id',$model->id)->whereBetween('created_at',[$start,$end]);
+                    break;
+
+                case Activity::JOIN_TYPE_FIXED_TIME:
+                    $start = strtotime($model->s_at);
+                    $end   = strtotime($model->e_at);
+                    if($model->join_time_type)
+                    {
+                        //获取星期方法
+                        $weeks = Date::getWeeks($start,$end,$model->join_time_info);
+                        $rankings = ActivityMember::whereIn('store_id',$stores)->where('activity_id',$model->id);
+                        foreach($weeks as $v)
+                        {
+                            $start = $v.' 00:00';
+                            $end   = $v.' 23:59';
+                            $rankings->orWhere(function($query) use ($start,$end)
+                            {
+                                $query->where('created_at','>=',$start)
+                                    ->where('created_at','<=', $end);
+                            });
+                        }
+                    }
+                    break;
+
+                case Activity::JOIN_TYPE_CONSUMPTION:
+                    $rankings = ActivityMember::whereIn('store_id',$stores)->where('activity_id',$model->id)->where('use_money','>=',$model->join_min_money);
+                    break;
+                default:
+                    break;
+            }
+        }
+        else
+        {
+            switch($model->join_type)
+            {
+                case Activity::JOIN_TYPE_ARRIVAL:
+                    $rankings = ActivityMember::where('store_id',$model->store_id)->where('activity_id',$model->id)->whereBetween('created_at',[$start,$end]);
+                    break;
+
+                case Activity::JOIN_TYPE_USER_TYPE:
+                    $rankings =   ActivityMember::where('store_id',$model->store_id)->where('activity_id',$model->id)->whereBetween('created_at',[$start,$end]);
+                    break;
+                case Activity::JOIN_TYPE_FIXED_TIME:
+                    $start = strtotime($model->s_at);
+                    $end   = strtotime($model->e_at);
+                    if($model->join_time_type)
+                    {
+                        //获取星期方法
+                        $weeks = Date::getWeeks($start,$end,$model->join_time_info);
+                        $rankings = ActivityMember::where('store_id',$model->store_id)->where('activity_id',$model->id);
+                        foreach($weeks as $v)
+                        {
+                            $start = $v.' 00:00';
+                            $end   = $v.' 23:59';
+                            $rankings->orWhere(function($query) use ($start,$end)
+                            {
+                                $query->where('created_at','>=',$start)
+                                    ->where('created_at','<=', $end);
+                            });
+                        }
+                    }
+                    break;
+
+                case Activity::JOIN_TYPE_CONSUMPTION:
+                    $rankings = ActivityMember::where('store_id',$model->store_id)->where('activity_id',$model->id)->where('use_money','>=',$model->join_min_money);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        //规则类型
+        if($model->rule_type == Activity::RULE_TYPE_ONE_CONSUME)
+        {
+            $rankings->selectRaw('id,store_id,user_id,max(use_money) as use_money,user_name,user_avatar,created_at')->orderByRaw('use_money desc')->groupBy('user_id');
+        }
+        elseif($model->rule_type == Activity::RULE_TYPE_COUNT_CONSUME)
+        {
+            $rankings->selectRaw('id,store_id,user_id,sum(use_money) as use_money,user_name,user_avatar,created_at')->orderByRaw('use_money desc')->groupBy('user_id');
+        }
+        return $rankings;
+    }
+    
+    
+    -------------------------------------------------------------华丽的分割线
